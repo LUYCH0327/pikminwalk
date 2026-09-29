@@ -17,6 +17,36 @@ struct RoutePlannerSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Travel Speed & Mode") {
+                    Picker("Mode", selection: $session.travelMode) {
+                        ForEach(TravelMode.allCases) { mode in
+                            Label(mode.title, systemImage: mode.icon).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    if session.travelMode == .custom {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Custom Speed")
+                                Spacer()
+                                Text(String(format: "%.1f km/h", session.customSpeedKmh))
+                                    .font(.callout.monospacedDigit())
+                                    .bold()
+                                    .foregroundStyle(.tint)
+                            }
+                            Slider(value: $session.customSpeedKmh, in: 1...150, step: 0.5) {
+                                Text("Speed")
+                            } minimumValueLabel: {
+                                Text("1")
+                            } maximumValueLabel: {
+                                Text("150")
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
                 Section("Road route") {
                     Button("Use current pin / spoof as start") {
                         start = session.simulated ?? session.pin

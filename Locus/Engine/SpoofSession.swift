@@ -54,6 +54,7 @@ final class SpoofSession: ObservableObject {
     @Published var simulated: CLLocationCoordinate2D?
     @Published var isSpoofing = false
     @Published var isPaused = false
+    @Published var isBusy = false // 補上 RootView 所需的狀態
 
     @Published var travelMode: TravelMode = .walk
     @Published var customSpeedKmh: Double = 10.0
@@ -165,7 +166,6 @@ final class SpoofSession: ObservableObject {
         currentRouteIndex = 0
     }
 
-    // 轉接 RootView 所需的 stop(pairing:) 方法
     func stop(pairing: Any? = nil) {
         stopRoute(keepCurrentPosition: false)
     }

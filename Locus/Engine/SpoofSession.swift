@@ -54,11 +54,18 @@ final class SpoofSession: ObservableObject {
         return travelMode.baseSpeedMps
     }
 
+    /// 單純修改/切換定位：直接覆蓋最新點並啟用，不卡住、不需先 Stop
     func setPin(_ coord: CLLocationCoordinate2D) {
+        // 清除任何舊有定時器或路徑，確保直接切換
+        moveTimer?.invalidate()
+        moveTimer = nil
+        
         pin = coord
-        if !isSpoofing {
-            simulated = coord
-        }
+        simulated = coord
+        isSpoofing = true
+        isPaused = false
+        routeCoordinates.removeAll()
+        currentRouteIndex = 0
     }
 
     func startRoute(_ coords: [CLLocationCoordinate2D]) {

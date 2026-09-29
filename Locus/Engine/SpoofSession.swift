@@ -41,7 +41,6 @@ enum TravelMode: String, CaseIterable, Identifiable {
     }
 }
 
-// 配合 RootView 的 switch 結構，保留需要的狀態
 enum SpoofStatus: Equatable {
     case idle
     case active
@@ -216,7 +215,10 @@ final class SpoofSession: ObservableObject {
         moveJoystick(vector: vector)
     }
 
-    // 補上 RootView 所需的 stopJoystick 方法
+    func startJoystick(pairing: Any? = nil) {
+        joystickActive = true
+    }
+
     func stopJoystick() {
         joystickActive = false
     }

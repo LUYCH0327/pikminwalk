@@ -45,6 +45,10 @@ final class SpoofSession: ObservableObject {
     @Published var routeCoordinates: [CLLocationCoordinate2D] = []
     @Published var currentRouteIndex: Int = 0
 
+    // 補回 MapHomeView 所需的屬性
+    @Published var mapStyleIndex: Int = 0
+    @Published var realCoordinate: CLLocationCoordinate2D?
+
     private var moveTimer: Timer?
 
     var currentSpeedMps: Double {
@@ -54,9 +58,13 @@ final class SpoofSession: ObservableObject {
         return travelMode.baseSpeedMps
     }
 
+    // 補回 MapHomeView 呼叫的真實定位更新方法
+    func startLocationUpdates() {
+        // 保留介面相容性
+    }
+
     /// 單純修改/切換定位：直接覆蓋最新點並啟用，不卡住、不需先 Stop
     func setPin(_ coord: CLLocationCoordinate2D) {
-        // 清除任何舊有定時器或路徑，確保直接切換
         moveTimer?.invalidate()
         moveTimer = nil
         

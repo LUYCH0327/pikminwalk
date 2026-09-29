@@ -190,9 +190,10 @@ struct MapHomeView: View {
                 .textInputAutocapitalization(.words)
                 .focused($searchFocused)
                 .submitLabel(.search)
-                .onSubmit {
-                    searchFocused = false
-                }
+               .onSubmit {
+    searchFocused = false
+    handleDirectSearch()
+}
                 .onChange(of: searchText) { _, value in
                     search.query = value
                 }
@@ -333,7 +334,63 @@ struct MapHomeView: View {
         .foregroundStyle(.primary)
     }
 
+  private func parseCoordinates(from text: String) -> CLLocationCoordinate2D? {
+        let parts = text.components(separatedBy: CharacterSet(charactersIn: ",; "))
+            .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        if parts.count == 2 {
+            let lat = parts[0]
+            let lon = parts[1]
+            if lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 {
+                return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            }
+        }
+        return nil
+    }
+
+    private func handleDirectSearch() {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let coord = parseCoordinates(from: trimmed) {
+            let title = String(format: "%.4f, %.4f", coord.latitude, coord.longitude)
+            session.pin = coord
+            pinPlaceName = title
+            position = .region(MKCoordinateRegion(center: coord, latitudinalMeters: 1200, longitudinalMeters: 1200))
+            searchText = ""
+            search.query = ""
+            searchFocused = false
+            session.addFavorite(name: title, coordinate: coord)
+            session.pushNamedRecent(name: title, coordinate: coord)
+            return
+        }
+
+        // 如果不是座標格式，則執行一般文字搜尋
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = trimmed
+        Task {
+            if let response = try? await MKLocalSearch(request: request).start(),
+               let item = response.mapItems.first {
+                let coord = item.placemark.coordinate
+                let title = item.name ?? trimmed
+                await MainActor.run {
+                    session.pin = coord
+                    pinPlaceName = title
+                    position = .region(MKCoordinateRegion(center: coord, latitudinalMeters: 1200, longitudinalMeters: 1200))
+                    searchText = ""
+                    search.query = ""
+                    searchFocused = false
+                    session.addFavorite(name: title, coordinate: coord)
+                    session.pushNamedRecent(name: title, coordinate: coord)
+                }
+            }
+        }
+    }
+
     private func select(completion: MKLocalSearchCompletion) {
+        // 如果輸入的是座標，優先解析座標
+        if let coord = parseCoordinates(from: searchText) {
+            handleDirectSearch()
+            return
+        }
+
         Task {
             let request = MKLocalSearch.Request(completion: completion)
             if let response = try? await MKLocalSearch(request: request).start(),

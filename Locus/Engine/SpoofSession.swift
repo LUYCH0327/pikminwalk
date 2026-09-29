@@ -33,7 +33,6 @@ enum TravelMode: String, CaseIterable, Identifiable {
         }
     }
 
-    // 補回 RouteBuilder 所需的地圖導航運具類型對應
     var mkTransportType: MKDirectionsTransportType {
         switch self {
         case .walk: return .walking
@@ -42,10 +41,14 @@ enum TravelMode: String, CaseIterable, Identifiable {
     }
 }
 
+// 補齊所有 RootView 期望的狀態
 enum SpoofStatus: Equatable {
     case idle
     case active
     case paused
+    case connecting
+    case reconnecting
+    case dropped(String)
 }
 
 final class SpoofSession: ObservableObject {
@@ -60,19 +63,16 @@ final class SpoofSession: ObservableObject {
     @Published var routeCoordinates: [CLLocationCoordinate2D] = []
     @Published var currentRouteIndex: Int = 0
 
-    // RootView 與介面所需的屬性
     @Published var mapStyleIndex: Int = 0
     @Published var realCoordinate: CLLocationCoordinate2D?
     @Published var lastError: String?
     @Published var joystickActive: Bool = false
 
-    // 收藏與歷史紀錄結構
     @Published var favorites: [(name: String, coordinate: CLLocationCoordinate2D)] = []
     @Published var recentLocations: [(name: String, coordinate: CLLocationCoordinate2D)] = []
 
     private var moveTimer: Timer?
 
-    // 狀態計算屬性（供 RootView 監聽與切換）
     var status: SpoofStatus {
         if !isSpoofing { return .idle }
         if isPaused { return .paused }
@@ -86,9 +86,7 @@ final class SpoofSession: ObservableObject {
         return travelMode.baseSpeedMps
     }
 
-    func startLocationUpdates() {
-        // 保留介面相容性
-    }
+    func startLocationUpdates() {}
 
     func suggestedFavoriteName(for coordinate: CLLocationCoordinate2D, fallback: String?) -> String {
         if let fallback = fallback, !fallback.isEmpty, fallback != "Unknown Place" {
@@ -109,7 +107,6 @@ final class SpoofSession: ObservableObject {
         }
     }
 
-    /// 單純修改/切換定位：直接覆蓋最新點並啟用
     func setPin(_ coord: CLLocationCoordinate2D) {
         moveTimer?.invalidate()
         moveTimer = nil
@@ -122,7 +119,6 @@ final class SpoofSession: ObservableObject {
         currentRouteIndex = 0
     }
 
-    // 轉接 SettingsView 呼叫的 teleport 方法
     func teleport(to coordinate: CLLocationCoordinate2D, pairing: Any? = nil) {
         setPin(coordinate)
     }
@@ -143,7 +139,6 @@ final class SpoofSession: ObservableObject {
         scheduleNextStep()
     }
 
-    // 轉接舊介面的 followRoute
     func followRoute(_ coordinates: [CLLocationCoordinate2D], pairing: Any? = nil) {
         startRoute(coordinates)
     }
@@ -217,5 +212,10 @@ final class SpoofSession: ObservableObject {
         pin = newCoord
         isSpoofing = true
         joystickActive = true
+    }
+
+    // 轉接 RootView 呼叫的 updateJoystick
+    func updateJoystick(vector: CGVector) {
+        moveJoystick(vector: vector)
     }
 }

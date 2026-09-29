@@ -45,9 +45,14 @@ final class SpoofSession: ObservableObject {
     @Published var routeCoordinates: [CLLocationCoordinate2D] = []
     @Published var currentRouteIndex: Int = 0
 
-    // 補回 MapHomeView 所需的屬性
+    // MapHomeView 所需的介面相容屬性
     @Published var mapStyleIndex: Int = 0
     @Published var realCoordinate: CLLocationCoordinate2D?
+    @Published var lastError: String?
+
+    // 收藏與歷史紀錄結構
+    @Published var favorites: [(name: String, coordinate: CLLocationCoordinate2D)] = []
+    @Published var recentLocations: [(name: String, coordinate: CLLocationCoordinate2D)] = []
 
     private var moveTimer: Timer?
 
@@ -58,12 +63,30 @@ final class SpoofSession: ObservableObject {
         return travelMode.baseSpeedMps
     }
 
-    // 補回 MapHomeView 呼叫的真實定位更新方法
     func startLocationUpdates() {
         // 保留介面相容性
     }
 
-    /// 單純修改/切換定位：直接覆蓋最新點並啟用，不卡住、不需先 Stop
+    func suggestedFavoriteName(for coordinate: CLLocationCoordinate2D, fallback: String) -> String {
+        if !fallback.isEmpty && fallback != "Unknown Place" {
+            return fallback
+        }
+        return String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude)
+    }
+
+    func addFavorite(name: String, coordinate: CLLocationCoordinate2D) {
+        favorites.append((name: name, coordinate: coordinate))
+    }
+
+    func pushNamedRecent(name: String, coordinate: CLLocationCoordinate2D) {
+        recentLocations.removeAll { abs($0.coordinate.latitude - coordinate.latitude) < 0.0001 && abs($0.coordinate.longitude - coordinate.longitude) < 0.0001 }
+        recentLocations.insert((name: name, coordinate: coordinate), at: 0)
+        if recentLocations.count > 20 {
+            recentLocations.removeLast()
+        }
+    }
+
+    /// 單純修改/切換定位：直接覆蓋最新點並啟用
     func setPin(_ coord: CLLocationCoordinate2D) {
         moveTimer?.invalidate()
         moveTimer = nil
@@ -77,7 +100,10 @@ final class SpoofSession: ObservableObject {
     }
 
     func startRoute(_ coords: [CLLocationCoordinate2D]) {
-        guard !coords.isEmpty else { return }
+        guard !coords.isEmpty else {
+            lastError = "Set a route start and end."
+            return
+        }
         stopRoute(keepCurrentPosition: true)
         
         routeCoordinates = coords

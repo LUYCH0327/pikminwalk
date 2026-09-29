@@ -5,7 +5,7 @@ import UIKit
 import UserNotifications
 
 enum TravelMode: String, CaseIterable, Identifiable {
-    case walk, run, cycle, drive
+    case walk, run, cycle, drive, custom
 
     var id: String { rawValue }
 
@@ -15,6 +15,7 @@ enum TravelMode: String, CaseIterable, Identifiable {
         case .run: return "Run"
         case .cycle: return "Cycle"
         case .drive: return "Drive"
+        case .custom: return "Custom"
         }
     }
 
@@ -24,6 +25,7 @@ enum TravelMode: String, CaseIterable, Identifiable {
         case .run: return "figure.run"
         case .cycle: return "bicycle"
         case .drive: return "car.fill"
+        case .custom: return "gauge.high"
         }
     }
 
@@ -34,13 +36,14 @@ enum TravelMode: String, CaseIterable, Identifiable {
         case .run: return 3.3
         case .cycle: return 6.5
         case .drive: return 13.4
+        case .custom: return 5.55 // 預設約 20 km/h，若有自訂則會在 SpoofSession 動態計算
         }
     }
 
     var mkTransportType: MKDirectionsTransportType {
         switch self {
         case .walk, .run: return .walking
-        case .cycle, .drive: return .automobile
+        case .cycle, .drive, .custom: return .automobile
         }
     }
 }
@@ -74,6 +77,7 @@ final class SpoofSession: ObservableObject {
     @Published var pin: CLLocationCoordinate2D?
     @Published var simulated: CLLocationCoordinate2D?
     @Published var travelMode: TravelMode = .walk
+    @Published var customSpeedKmh: Double = 20.0 // 新增自訂速度 (km/h)，預設 20 km/h
     @Published var mapStyleIndex: Int = 0
     @Published var lastError: String?
     @Published var isBusy = false
@@ -96,6 +100,14 @@ final class SpoofSession: ObservableObject {
     init() {
         favorites = SavedPlace.load(key: favoritesKey)
         recents = SavedPlace.load(key: recentsKey)
+    }
+
+    /// 計算當前的真實 Base Speed (m/s)
+    var currentBaseSpeed: CLLocationSpeed {
+        if travelMode == .custom {
+            return max(0.27, customSpeedKmh / 3.6) // km/h 轉成 m/s
+        }
+        return travelMode.baseSpeed
     }
 
     var isSpoofing: Bool {
@@ -127,8 +139,6 @@ final class SpoofSession: ObservableObject {
             simulated = nil
             status = .idle
             endBackground()
-            // Keep location updates running so the map puck / locate button
-            // can return to the real GPS fix (not the leftover pin).
             locationKeeper.start()
         case .failure(let error):
             lastError = error.localizedDescription
@@ -184,7 +194,7 @@ final class SpoofSession: ObservableObject {
         guard pairing.hasPairingFile, coordinates.count >= 2 else { return }
         routeTask?.cancel()
         stopJoystick()
-        let mode = travelMode
+        let baseSpeed = currentBaseSpeed
         routeTask = Task { [weak self] in
             guard let self else { return }
             var previous = coordinates[0]
@@ -195,9 +205,9 @@ final class SpoofSession: ObservableObject {
                 if Task.isCancelled { break }
                 let distance = CLLocation(latitude: previous.latitude, longitude: previous.longitude)
                     .distance(from: CLLocation(latitude: next.latitude, longitude: next.longitude))
-                var speed = mode.baseSpeed * Double.random(in: 0.88...1.12)
+                var speed = baseSpeed * Double.random(in: 0.88...1.12)
                 speed = max(0.8, speed)
-                let stepMeters: CLLocationDistance = min(12, max(4, speed * 0.5))
+                let stepMeters: CLLocationDistance = min(25, max(4, speed * 0.5))
                 let steps = max(1, Int(ceil(distance / stepMeters)))
                 for i in 1...steps {
                     if Task.isCancelled { break }
@@ -224,7 +234,6 @@ final class SpoofSession: ObservableObject {
             latitude: coordinate.latitude,
             longitude: coordinate.longitude
         )
-        // Don't let a generic star overwrite a named favorite for the same spot.
         if let existing = favorites.first(where: { $0.id == place.id }),
            Self.isGenericFavoriteName(place.name),
            !Self.isGenericFavoriteName(existing.name) {
@@ -253,7 +262,6 @@ final class SpoofSession: ObservableObject {
         SavedPlace.save(recents, key: recentsKey)
     }
 
-    /// Best display name for starring the current pin (search title, matching recent, etc.).
     func suggestedFavoriteName(for coordinate: CLLocationCoordinate2D, fallback: String? = nil) -> String {
         if let fallback, !fallback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return fallback.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -277,7 +285,6 @@ final class SpoofSession: ObservableObject {
     private static func isGenericFavoriteName(_ name: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty || trimmed == "Favorite" { return true }
-        // Coordinate-looking labels from older teleports.
         let parts = trimmed.split(separator: ",")
         if parts.count == 2,
            Double(parts[0].trimmingCharacters(in: .whitespaces)) != nil,
@@ -329,7 +336,7 @@ final class SpoofSession: ObservableObject {
         guard magnitude > 0.08 else { return }
         let nx = joystickVector.dx / magnitude
         let ny = -joystickVector.dy / magnitude
-        let speed = travelMode.baseSpeed * min(1.0, magnitude) * Double.random(in: 0.9...1.1)
+        let speed = currentBaseSpeed * min(1.0, magnitude) * Double.random(in: 0.9...1.1)
         let dt = 0.25
         let meters = speed * dt
         let next = offset(coordinate: current, eastMeters: nx * meters, northMeters: ny * meters)

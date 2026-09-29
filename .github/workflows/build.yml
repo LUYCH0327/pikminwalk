@@ -1,0 +1,34 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Build App & Create IPA
+        run: |
+          xcodebuild -workspace *.xcworkspace -scheme Locus -configuration Release -sdk iphoneos clean archive -archivePath build/Locus.xcarchive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO || \
+          xcodebuild -project *.xcodeproj -scheme Locus -configuration Release -sdk iphoneos clean archive -archivePath build/Locus.xcarchive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+          
+          mkdir -p build/Payload
+          cp -r build/Locus.xcarchive/Products/Applications/*.app build/Payload/
+          cd build && zip -r Locus.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Locus-unsigned.ipa
+          path: build/Locus.ipa

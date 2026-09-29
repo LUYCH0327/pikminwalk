@@ -165,6 +165,11 @@ final class SpoofSession: ObservableObject {
         currentRouteIndex = 0
     }
 
+    // 轉接 RootView 所需的 stop(pairing:) 方法
+    func stop(pairing: Any? = nil) {
+        stopRoute(keepCurrentPosition: false)
+    }
+
     private func scheduleNextStep() {
         guard isSpoofing, !isPaused, currentRouteIndex < routeCoordinates.count - 1 else {
             if currentRouteIndex >= routeCoordinates.count - 1 {

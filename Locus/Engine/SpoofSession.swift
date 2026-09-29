@@ -67,8 +67,8 @@ final class SpoofSession: ObservableObject {
         // 保留介面相容性
     }
 
-    func suggestedFavoriteName(for coordinate: CLLocationCoordinate2D, fallback: String) -> String {
-        if !fallback.isEmpty && fallback != "Unknown Place" {
+func suggestedFavoriteName(for coordinate: CLLocationCoordinate2D, fallback: String?) -> String {
+        if let fallback = fallback, !fallback.isEmpty, fallback != "Unknown Place" {
             return fallback
         }
         return String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude)

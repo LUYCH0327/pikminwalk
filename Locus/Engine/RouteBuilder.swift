@@ -2,6 +2,7 @@ import CoreLocation
 import Foundation
 import MapKit
 
+// 1. 保留原本的 RouteBuilder（不用動它）
 enum RouteBuilder {
     static func roadRoute(
         from start: CLLocationCoordinate2D,
@@ -47,6 +48,7 @@ enum RouteBuilder {
     }
 }
 
+// 2. 將原本的 GPXCodec 替換成以下內容（含 GPXXMLParser 備援類別）
 enum GPXCodec {
     static func parse(_ url: URL) throws -> [CLLocationCoordinate2D] {
         let accessing = url.startAccessingSecurityScopedResource()
@@ -54,30 +56,36 @@ enum GPXCodec {
         let data = try Data(contentsOf: url)
         let text = String(decoding: data, as: UTF8.self)
         var coords: [CLLocationCoordinate2D] = []
-        let pattern = #"lat="([^"]+)"[^>]*lon="([^"]+)""#
-        let regex = try NSRegularExpression(pattern: pattern)
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        regex.enumerateMatches(in: text, range: range) { match, _, _ in
-            guard let match,
-                  let latR = Range(match.range(at: 1), in: text),
-                  let lonR = Range(match.range(at: 2), in: text),
-                  let lat = Double(text[latR]),
-                  let lon = Double(text[lonR]) else { return }
-            coords.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
-        }
-        // Also support lon before lat
-        if coords.isEmpty {
-            let alt = #"lon="([^"]+)"[^>]*lat="([^"]+)""#
-            let altRegex = try NSRegularExpression(pattern: alt)
-            altRegex.enumerateMatches(in: text, range: range) { match, _, _ in
-                guard let match,
-                      let lonR = Range(match.range(at: 1), in: text),
-                      let latR = Range(match.range(at: 2), in: text),
-                      let lon = Double(text[lonR]),
-                      let lat = Double(text[latR]) else { return }
-                coords.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+
+        // 1. 正則匹配：同時相容雙引號 " 與單引號 '
+        let pattern = #"(?:lat|lon)\s*=\s*["']([^"']+)["']\s*(?:lon|lat)\s*=\s*["']([^"']+)["']"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            regex.enumerateMatches(in: text, range: range) { match, _, _ in
+                guard let match, match.numberOfRanges == 3,
+                      let r1 = Range(match.range(at: 1), in: text),
+                      let r2 = Range(match.range(at: 2), in: text) else { return }
+
+                let fullMatchRange = Range(match.range, in: text)!
+                let matchSnippet = String(text[fullMatchRange])
+                if matchSnippet.lowercased().hasPrefix("lat") {
+                    if let lat = Double(text[r1]), let lon = Double(text[r2]) {
+                        coords.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+                    }
+                } else {
+                    if let lon = Double(text[r1]), let lat = Double(text[r2]) {
+                        coords.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+                    }
+                }
             }
         }
+
+        // 2. 如果正則沒抓到，使用標準 XMLParser 備援機制解析
+        if coords.isEmpty {
+            let parser = GPXXMLParser(data: data)
+            coords = parser.parse()
+        }
+
         guard !coords.isEmpty else {
             throw NSError(domain: "Locus", code: 2, userInfo: [NSLocalizedDescriptionKey: "No track points found in GPX"])
         }
@@ -102,5 +110,34 @@ enum GPXCodec {
         </gpx>
         """
         return body
+    }
+}
+
+// 備援 XML 解析器（貼在檔案最下方）
+private class GPXXMLParser: NSObject, XMLParserDelegate {
+    private let parser: XMLParser
+    private var coords: [CLLocationCoordinate2D] = []
+
+    init(data: Data) {
+        self.parser = XMLParser(data: data)
+        super.init()
+        self.parser.delegate = self
+    }
+
+    func parse() -> [CLLocationCoordinate2D] {
+        parser.parse()
+        return coords
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
+        let tag = elementName.lowercased()
+        if tag == "trkpt" || tag == "wpt" || tag == "rtept" {
+            if let latStr = attributeDict["lat"] ?? attributeDict["LAT"],
+               let lonStr = attributeDict["lon"] ?? attributeDict["LON"],
+               let lat = Double(latStr),
+               let lon = Double(lonStr) {
+                coords.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+            }
+        }
     }
 }
